@@ -39,6 +39,16 @@ class DiscoveryTests(unittest.TestCase):
             self.assertNotIn('private-key-sentinel', report)
             self.assertEqual(json.loads(report)['reason'], 'ValueError')
 
+    def test_missing_secret_field_has_a_safe_actionable_reason(self):
+        with tempfile.TemporaryDirectory() as temp:
+            output = Path(temp) / 'result'
+            with patch('discover.bao', side_effect=[{'token': 'fixture'}, {'wrong_field': 'private-sentinel'}]), contextlib.redirect_stdout(io.StringIO()):
+                rc = run(output, ROOT, 'all', REVISION)
+            manifest = json.loads((output / 'run.json').read_text())
+            self.assertEqual(rc, 1)
+            self.assertEqual(manifest['reason'], 'ssh_private_key_missing')
+            self.assertNotIn('private-sentinel', json.dumps(manifest))
+
     def test_denied_inventory_is_not_reported_as_no_targets(self):
         with tempfile.TemporaryDirectory() as temp:
             temp = Path(temp)

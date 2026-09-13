@@ -72,9 +72,15 @@ def run(directory, source, pattern, revision, timeout=900, inventory=None):
                        PLATFORM_RESULTS_DIR=str(directory), ANSIBLE_LOCAL_TEMP=temp + '/ansible')
             if inventory is None:
                 mount = os.environ.get('PLATFORM_KV_MOUNT', 'kv')
-                env['NETBOX_TOKEN'] = bao(mount + '/data/platform/netbox')['token']
+                token = bao(mount + '/data/platform/netbox').get('token')
+                if not isinstance(token, str) or not token.strip():
+                    raise DiscoveryError('netbox_token_missing')
+                env['NETBOX_TOKEN'] = token
+                key = bao(mount + '/data/platform/ssh/default').get('private_key')
+                if not isinstance(key, str) or not key.strip():
+                    raise DiscoveryError('ssh_private_key_missing')
                 key_path = Path(temp) / 'ssh-key'
-                key_path.write_text(bao(mount + '/data/platform/ssh/default')['private_key'].rstrip() + '\n')
+                key_path.write_text(key.rstrip() + '\n')
                 key_path.chmod(0o600)
                 env['ANSIBLE_PRIVATE_KEY_FILE'] = str(key_path)
                 env['ANSIBLE_SSH_ARGS'] = '-C -o ControlMaster=auto -o ControlPersist=60 -o UserKnownHostsFile=/run/platform/trust/known_hosts'
