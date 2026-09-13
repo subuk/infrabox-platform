@@ -8,12 +8,20 @@ import signal
 import subprocess
 import sys
 import tempfile
-import shutil
-from urllib.request import Request, urlopen
+from urllib.request import Request, build_opener, HTTPSHandler, HTTPRedirectHandler, ProxyHandler
 from urllib.error import HTTPError
 import ssl
 
 from results import atomic, summary
+
+
+class DiscoveryError(ValueError):
+    """Only fixed reason codes, safe to publish in the run manifest."""
+
+
+class NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, *args):
+        raise DiscoveryError('openbao_redirect_refused')
 
 
 def now():
@@ -23,22 +31,24 @@ def now():
 def pattern_argument(value):
     value = value.strip() or 'all'
     if len(value) > 4096 or '\x00' in value or '\n' in value or '\r' in value or value.startswith('@'):
-        raise ValueError('invalid_pattern')
+        raise DiscoveryError('invalid_pattern')
     return '--limit=' + value
 
 
 def bao(path):
     address = os.environ['VAULT_ADDR'].rstrip('/')
     if not address.startswith('https://'):
-        raise ValueError('openbao_tls_required')
+        raise DiscoveryError('openbao_tls_required')
     token = Path(os.environ['PLATFORM_BAO_TOKEN_FILE']).read_text().strip()
     request = Request(address + '/v1/' + path,
                       headers={'X-Vault-Token': token})
     try:
-        with urlopen(request, context=ssl.create_default_context(cafile=os.environ['SSL_CERT_FILE']), timeout=15) as response:
+        opener = build_opener(ProxyHandler({}), NoRedirect(), HTTPSHandler(
+            context=ssl.create_default_context(cafile=os.environ['SSL_CERT_FILE'])))
+        with opener.open(request, timeout=15) as response:
             return json.load(response)['data']['data']
     except HTTPError as error:
-        raise ValueError('openbao_http_' + str(error.code)) from None
+        raise DiscoveryError('openbao_http_' + str(error.code)) from None
 
 
 def run(directory, source, pattern, revision, timeout=900, inventory=None):
@@ -54,7 +64,7 @@ def run(directory, source, pattern, revision, timeout=900, inventory=None):
     try:
         built = Path('/opt/platform/REVISION')
         if built.exists() and built.read_text().strip() != revision:
-            raise ValueError('runtime_revision_mismatch')
+            raise DiscoveryError('runtime_revision_mismatch')
         argument = pattern_argument(pattern)
         with tempfile.TemporaryDirectory(prefix='credentials-', dir=os.environ.get('PLATFORM_PRIVATE_DIR')) as temp:
             env = os.environ.copy()
@@ -103,8 +113,8 @@ def run(directory, source, pattern, revision, timeout=900, inventory=None):
                     diagnostic_reason = 'inventory_authentication_failed'
     except (Exception, KeyboardInterrupt) as error:
         manifest['outcome'] = 'dependency_failed'
-        manifest['reason'] = str(error) if isinstance(error, ValueError) else type(error).__name__
-        # Only fixed internal ValueErrors are exported; never propagate raw HTTP bodies.
+        manifest['reason'] = str(error) if isinstance(error, DiscoveryError) else type(error).__name__
+        # Never propagate raw HTTP bodies, credential values, or library diagnostics.
     finally:
         hosts_path = directory / 'hosts.json'
         if hosts_path.exists():

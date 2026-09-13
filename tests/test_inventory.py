@@ -30,14 +30,15 @@ class NativeInventoryTests(unittest.TestCase):
             records = []
             if path == '/api/dcim/devices/':
                 self.assertEqual(parse_qs(urlsplit(url).query)['tag'], ['infrabox-managed'])
-                records = [{'id': 7, 'name': 'router1', 'platform': None, 'tags': [],
+                records = [{'id': 7, 'name': 'router1', 'platform': None, 'tags': [], 'status': {'value': 'active'},
                             'config_context': {'ansible_connection': 'ansible.netcommon.network_cli',
                                                'ansible_network_os': 'vendor.os', 'ansible_port': 2207,
                                                'operator_arbitrary_var': {'nested': 42}},
+                            'primary_ip': {'address': '192.0.2.7/24'},
                             'primary_ip4': {'address': '192.0.2.7/24'}}]
             if path == '/api/virtualization/virtual-machines/':
                 self.assertEqual(parse_qs(urlsplit(url).query)['tag'], ['infrabox-managed'])
-                records = [{'id': 8, 'name': 'vm1', 'platform': None, 'tags': [],
+                records = [{'id': 8, 'name': 'vm1', 'platform': None, 'tags': [], 'status': {'value': 'active'},
                             'config_context': {'ansible_user': 'operator', 'ansible_host': '2001:db8::8'}}]
             return {'results': records, 'next': None, 'count': len(records)}
 

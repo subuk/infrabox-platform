@@ -6,8 +6,10 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
+REVISION = Path('/opt/platform/REVISION').read_text().strip() if Path('/opt/platform/REVISION').exists() else '0' * 40
 sys.path.insert(0, str(ROOT / 'scripts'))
 from discover import pattern_argument, run
 from results import facts_for_publication, summary
@@ -27,6 +29,16 @@ class DiscoveryTests(unittest.TestCase):
                                        'facter_token': 'sentinel', 'ohai_secret': 'sentinel', 'ansible_kernel': 'native'})
         self.assertEqual(value, {'ansible_kernel': 'native'})
 
+    def test_library_exception_does_not_publish_credentials(self):
+        with tempfile.TemporaryDirectory() as temp:
+            output = Path(temp) / 'result'
+            with patch('discover.bao', side_effect=ValueError('private-key-sentinel')), contextlib.redirect_stdout(io.StringIO()):
+                rc = run(output, ROOT, 'all', REVISION)
+            self.assertEqual(rc, 1)
+            report = (output / 'run.json').read_text()
+            self.assertNotIn('private-key-sentinel', report)
+            self.assertEqual(json.loads(report)['reason'], 'ValueError')
+
     def test_native_selection_and_facts(self):
         with tempfile.TemporaryDirectory() as temp:
             temp = Path(temp)
@@ -38,7 +50,7 @@ class DiscoveryTests(unittest.TestCase):
                 'test_bad': {'hosts': {'beta': {'ansible_connection': 'does_not_exist',
                     'infrabox_netbox_id': 2, 'infrabox_netbox_virtual': False}}}}}}))
             with contextlib.redirect_stdout(io.StringIO()):
-                rc = run(temp / 'subset', ROOT, 'test_*:!test_bad', '0' * 40, inventory=inventory, timeout=60)
+                rc = run(temp / 'subset', ROOT, 'test_*:!test_bad', REVISION, inventory=inventory, timeout=60)
             manifest = json.loads((temp / 'subset/run.json').read_text())
             self.assertEqual(rc, 0, manifest)
             self.assertEqual([h['name'] for h in manifest['hosts']], ['alpha'])
@@ -47,11 +59,11 @@ class DiscoveryTests(unittest.TestCase):
             self.assertNotIn('ansible_env', facts)
             self.assertNotIn('ansible_local', facts)
             with contextlib.redirect_stdout(io.StringIO()):
-                rc = run(temp / 'none', ROOT, 'missing*', '0' * 40, inventory=inventory, timeout=60)
+                rc = run(temp / 'none', ROOT, 'missing*', REVISION, inventory=inventory, timeout=60)
             self.assertEqual(rc, 1)
             self.assertEqual(json.loads((temp / 'none/run.json').read_text())['outcome'], 'no_targets')
             with contextlib.redirect_stdout(io.StringIO()):
-                rc = run(temp / 'partial', ROOT, 'all', '0' * 40, inventory=inventory, timeout=60)
+                rc = run(temp / 'partial', ROOT, 'all', REVISION, inventory=inventory, timeout=60)
             self.assertEqual(rc, 1)
             manifest = json.loads((temp / 'partial/run.json').read_text())
             self.assertEqual(manifest['outcome'], 'partial_failure', manifest)
