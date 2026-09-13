@@ -15,9 +15,12 @@ jobs:
       - name: Create a tiny artifact and verify the checked out commit
         env:
           EXPECTED_SHA: ${{ gitea.sha }}
+          CONTEXT_RUN_ID: ${{ gitea.run_id }}
+          CONTEXT_RUN_ATTEMPT: ${{ gitea.run_attempt }}
         run: |
           python3 -c 'import os,subprocess,pathlib; sha=subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip(); assert sha==os.environ["EXPECTED_SHA"]; pathlib.Path("compatibility.txt").write_text(sha+"\n")'
-      - uses: https://github.com/actions/upload-artifact@a8a3f3ad30e3422c9c7b888a15615d19a852ae32
+          python3 -c 'import os,json; print(json.dumps({k:os.environ.get(k) for k in ("CONTEXT_RUN_ID","CONTEXT_RUN_ATTEMPT","GITHUB_RUN_ATTEMPT")}))'
+      - uses: https://github.com/ChristopherHX/gitea-upload-artifact@81f940d004763f986ba3582c007fd842dd5cb0d7
         with:
           name: platform-compatibility
           path: compatibility.txt

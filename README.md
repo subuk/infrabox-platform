@@ -103,8 +103,10 @@ This is a finite dependency set, not a promise that every Ansible collection or
 transport is available. Missing dependencies are reported as failures. Add and
 pin required dependencies through reviewed Platform updates.
 
-The workflow uses external checkout v4.2.2 and upload-artifact v3.1.3 Actions,
-pinned by commit SHA. Fetching those Actions can require access to GitHub. The
+The workflow uses external checkout v4.2.2 and the Gitea-compatible
+`ChristopherHX/gitea-upload-artifact` v4 fork, pinned by commit SHA. Gitea's REST
+artifact listing/download endpoints expose v4 artifacts. Fetching those Actions
+can require access to GitHub. The
 Platform source itself is checked out from local Gitea. Node is included for
 Actions compatibility. No host container-engine socket or privileged job is used.
 
