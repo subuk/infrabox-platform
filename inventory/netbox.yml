@@ -1,0 +1,24 @@
+---
+plugin: netbox.netbox.nb_inventory
+# api_endpoint is supplied by the plugin's native NETBOX_API environment option.
+token:
+  type: Bearer
+  value: "{{ lookup('ansible.builtin.env', 'NETBOX_TOKEN') }}"
+ca_path: /run/platform/trust/ca-bundle.crt
+validate_certs: true
+follow_redirects: none
+timeout: 30
+config_context: true
+flatten_config_context: true
+plurals: false
+cache: false
+strict: true
+query_filters:
+  - tag: "{{ lookup('ansible.builtin.env', 'PLATFORM_MANAGED_TAG', default='infrabox-managed') }}"
+group_by: [platform, site, role, tag, is_virtual]
+interfaces: false
+services: false
+racks: false
+compose:
+  infrabox_netbox_id: id
+  infrabox_netbox_virtual: is_virtual

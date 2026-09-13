@@ -1,0 +1,21 @@
+FROM docker.gitea.com/runner:3.4.2@sha256:50c352f0506b1878be93f2e9e97353cd6261cd2e7f7bfe70fcd968d00874f9f9 AS runner
+FROM docker.io/library/node:22.20.0-bookworm-slim@sha256:b21fe589dfbe5cc39365d0544b9be3f1f33f55f3c86c87a76ff65a02f8f5848e AS node
+FROM docker.io/library/python:3.13.7-slim-bookworm@sha256:781449467ffb6f04218f09b1ecdcdc7d22b289ee5da9ec498b024e24ad7a6db7
+# Immutable Debian snapshot; no floating package repository during builds.
+RUN rm -f /etc/apt/sources.list.d/debian.sources && \
+    echo 'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian/20260912T000000Z bookworm main' > /etc/apt/sources.list && \
+    apt-get update && apt-get install -y --no-install-recommends git openssh-client ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+COPY --from=runner /usr/local/bin/gitea-runner /usr/local/bin/gitea-runner
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
+COPY requirements.txt /opt/platform/requirements.txt
+RUN pip install --no-cache-dir -r /opt/platform/requirements.txt
+COPY requirements.yml /opt/platform/requirements.yml
+RUN ansible-galaxy collection install -r /opt/platform/requirements.yml -p /opt/collections
+ENV ANSIBLE_COLLECTIONS_PATH=/opt/collections
+COPY . /opt/platform
+ARG REVISION
+RUN test -n "$REVISION" && printf '%s\n' "$REVISION" > /opt/platform/REVISION
+LABEL org.opencontainers.image.revision=$REVISION
+WORKDIR /data
+ENTRYPOINT ["/usr/local/bin/gitea-runner"]

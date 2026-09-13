@@ -1,0 +1,12 @@
+---
+- name: Discover native host facts
+  hosts: all
+  gather_facts: true
+  become: false
+  # These defaults belong only to setup; network facts modules retain their
+  # native options. Trusted Config Context retains ordinary Ansible precedence.
+  module_defaults:
+    ansible.builtin.setup:
+      gather_subset: ['all', '!env', '!local', '!facter', '!ohai']
+      fact_path: /dev/null
+  tasks: []

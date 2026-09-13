@@ -1,0 +1,6 @@
+.git
+.venv
+.ansible
+__pycache__
+artifacts
+.runtime

@@ -1,0 +1,8 @@
+---
+# The ansible package supplies the general collection set; these integrations
+# have separately tested pins and are searched before bundled collections.
+collections:
+  - name: netbox.netbox
+    version: 3.23.0
+  - name: community.hashi_vault
+    version: 7.1.0
