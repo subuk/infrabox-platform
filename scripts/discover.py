@@ -105,12 +105,12 @@ def run(directory, source, pattern, revision, timeout=900, inventory=None):
                             process.wait()
                 diagnostics.seek(0)
                 message = diagnostics.read(1024 * 1024).decode(errors='replace')
-                if 'leaves us with no hosts to target' in message:
-                    diagnostic_reason = 'no_targets'
-                elif 'CERTIFICATE_VERIFY_FAILED' in message:
+                if 'CERTIFICATE_VERIFY_FAILED' in message:
                     diagnostic_reason = 'tls_verification_failed'
-                elif '401' in message or '403' in message:
+                elif ('Permission denied:' in message and 'inventory plugin' in message) or '401' in message or '403' in message:
                     diagnostic_reason = 'inventory_authentication_failed'
+                elif 'leaves us with no hosts to target' in message:
+                    diagnostic_reason = 'no_targets'
     except (Exception, KeyboardInterrupt) as error:
         manifest['outcome'] = 'dependency_failed'
         manifest['reason'] = str(error) if isinstance(error, DiscoveryError) else type(error).__name__
@@ -122,6 +122,11 @@ def run(directory, source, pattern, revision, timeout=900, inventory=None):
         if manifest['outcome'] == 'pending':
             if (directory / 'callback-error.json').exists():
                 manifest['outcome'] = 'result_export_failed'
+            elif diagnostic_reason in ('tls_verification_failed', 'inventory_authentication_failed'):
+                # nb_inventory may deliberately return an empty endpoint on HTTP 403.
+                # Preserve any captured facts but never call that inventory complete.
+                manifest['outcome'] = 'inventory_failed'
+                manifest['reason'] = diagnostic_reason
             elif not manifest['hosts']:
                 manifest['outcome'] = 'no_targets' if rc == 0 or diagnostic_reason == 'no_targets' else 'inventory_failed'
                 if diagnostic_reason:

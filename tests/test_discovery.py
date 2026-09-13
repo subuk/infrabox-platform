@@ -39,6 +39,22 @@ class DiscoveryTests(unittest.TestCase):
             self.assertNotIn('private-key-sentinel', report)
             self.assertEqual(json.loads(report)['reason'], 'ValueError')
 
+    def test_denied_inventory_is_not_reported_as_no_targets(self):
+        with tempfile.TemporaryDirectory() as temp:
+            temp = Path(temp)
+            inventory = temp / 'denied.py'
+            inventory.write_text('#!' + sys.executable + '\nimport sys,json\n'
+                'print("Permission denied: https://netbox.example.com/api/dcim/devices/. '
+                'This may impair functionality of the inventory plugin.",file=sys.stderr)\n'
+                'print(json.dumps({"_meta":{"hostvars":{}},"all":{"hosts":[]}}))\n')
+            inventory.chmod(0o700)
+            with contextlib.redirect_stdout(io.StringIO()):
+                rc = run(temp / 'result', ROOT, 'all', REVISION, inventory=inventory, timeout=60)
+            self.assertEqual(rc, 1)
+            manifest = json.loads((temp / 'result/run.json').read_text())
+            self.assertEqual(manifest['outcome'], 'inventory_failed')
+            self.assertEqual(manifest['reason'], 'inventory_authentication_failed')
+
     def test_native_selection_and_facts(self):
         with tempfile.TemporaryDirectory() as temp:
             temp = Path(temp)
