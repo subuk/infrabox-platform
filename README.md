@@ -4,8 +4,9 @@ Manually collect native Ansible facts from the managed NetBox inventory through
 local Gitea. Core provisions the repository, runtime, runner, credentials and
 deployment settings. This repository contains the fixed executable automation.
 
-Implementation is under acceptance. Local tests are available; a successful
-deployment or live managed-host acceptance is not implied by this README.
+The Gitea dispatch/checkout/v4 artifact compatibility gate passed on the
+development appliance. Managed-host acceptance is tracked in Core
+IMPLEMENTATION_STATUS.md; compatibility alone does not establish target access.
 
 ## Before running
 
