@@ -12,10 +12,17 @@ ROOT = Path(__file__).resolve().parents[1]
 REVISION = Path('/opt/platform/REVISION').read_text().strip() if Path('/opt/platform/REVISION').exists() else '0' * 40
 sys.path.insert(0, str(ROOT / 'scripts'))
 from discover import pattern_argument, run
-from results import facts_for_publication, summary
+from results import facts_for_publication, summary, diagnostic
 
 
 class DiscoveryTests(unittest.TestCase):
+    def test_error_text_redacts_credentials_and_retains_cause(self):
+        with patch.dict(os.environ, {'NETBOX_TOKEN': 'secret-sentinel'}):
+            text = diagnostic('Connection refused secret-sentinel password=hunter2 https://user:pass@example.com')
+        self.assertIn('Connection refused', text)
+        for secret in ('secret-sentinel', 'hunter2', 'user:pass'):
+            self.assertNotIn(secret, text)
+
     def test_patterns_remain_native_single_argument(self):
         for pattern in ['all', 'web*:!db', 'web:&production', '~web[0-9]+', 'one,two', '--help', '$(touch /tmp/no)']:
             self.assertEqual(pattern_argument(pattern), '--limit=' + pattern)
@@ -64,6 +71,8 @@ class DiscoveryTests(unittest.TestCase):
             manifest = json.loads((temp / 'result/run.json').read_text())
             self.assertEqual(manifest['outcome'], 'inventory_failed')
             self.assertEqual(manifest['reason'], 'inventory_authentication_failed')
+            self.assertIn('Permission denied', manifest['diagnostics'])
+            self.assertIn('Permission denied', (temp / 'result/summary.md').read_text())
 
     def test_native_selection_and_facts(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -94,6 +103,9 @@ class DiscoveryTests(unittest.TestCase):
             manifest = json.loads((temp / 'partial/run.json').read_text())
             self.assertEqual(manifest['outcome'], 'partial_failure', manifest)
             self.assertTrue((temp / 'partial/facts/vm-1.json').exists())
+            failed = next(h for h in manifest['hosts'] if h['name'] == 'beta')
+            self.assertIn('does_not_exist', failed['error'])
+            self.assertIn('does_not_exist', (temp / 'partial/summary.md').read_text())
 
 
 if __name__ == '__main__':

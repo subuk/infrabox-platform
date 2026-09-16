@@ -7,7 +7,7 @@ import sys
 from ansible.plugins.callback import CallbackBase
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'scripts'))
-from results import atomic, facts_for_publication, host_identity
+from results import atomic, facts_for_publication, host_identity, diagnostic
 
 DOCUMENTATION = '''
 name: discovery_results
@@ -67,7 +67,24 @@ class CallbackModule(CallbackBase):
             record['status'] = status
             if status != 'succeeded':
                 record.setdefault('reason', 'connection_failed' if status == 'unreachable' else 'collection_failed')
+                if result._result.get('_ansible_no_log') or result._task.no_log:
+                    record['error'] = 'Error details suppressed by Ansible no_log.'
+                    self.save()
+                    return
                 message = str(result._result.get('msg', ''))
+                details = [message] if message else []
+                for field in ('stderr', 'module_stderr'):
+                    if result._result.get(field):
+                        details.append(field + ': ' + str(result._result[field]))
+                # gather_facts can wrap the actual module failure.
+                for name, failure in result._result.get('failed_modules', {}).items():
+                    if failure.get('_ansible_no_log'):
+                        details.append(str(name) + ': details suppressed by no_log')
+                        continue
+                    for field in ('msg', 'stderr', 'module_stderr'):
+                        if failure.get(field):
+                            details.append(str(name) + ' ' + field + ': ' + str(failure[field]))
+                record['error'] = diagnostic('\n'.join(details) or 'No error details returned by Ansible.')
                 for text, reason in [('Host key verification failed', 'ssh_host_trust'),
                                      ('REMOTE HOST IDENTIFICATION HAS CHANGED', 'ssh_host_trust'),
                                      ('Permission denied', 'ssh_authentication'),

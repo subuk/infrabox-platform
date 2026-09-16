@@ -90,6 +90,10 @@ or appliance death can prevent finalization/upload. A canceled run is not succes
 The repository/artifacts are private. Upload requests specify seven-day retention;
 actual Gitea enforcement must be checked during live acceptance. Credentials,
 raw contexts/inventory and unrestricted diagnostic dumps are not uploaded.
+Failed hosts include bounded error messages in `run.json` and `summary.md`, also
+printed in the discovery step log. Failed Ansible processes include captured
+diagnostics. Known runtime credentials and common secret fields are redacted;
+Ansible `no_log` failures remain suppressed.
 Environment, local, facter and ohai fact families are excluded from publication.
 For `setup`, module defaults also disable those collectors and executable local
 facts. Other fact modules keep their supported arguments and native output.

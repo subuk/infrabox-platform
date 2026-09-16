@@ -12,7 +12,7 @@ from urllib.request import Request, build_opener, HTTPSHandler, HTTPRedirectHand
 from urllib.error import HTTPError
 import ssl
 
-from results import atomic, summary
+from results import atomic, summary, diagnostic
 
 
 class DiscoveryError(ValueError):
@@ -61,6 +61,7 @@ def run(directory, source, pattern, revision, timeout=900, inventory=None):
     process = None
     rc = 1
     diagnostic_reason = None
+    credentials = []
     try:
         built = Path('/opt/platform/REVISION')
         if built.exists() and built.read_text().strip() != revision:
@@ -76,9 +77,11 @@ def run(directory, source, pattern, revision, timeout=900, inventory=None):
                 if not isinstance(token, str) or not token.strip():
                     raise DiscoveryError('netbox_token_missing')
                 env['NETBOX_TOKEN'] = token
+                credentials.append(token)
                 key = bao(mount + '/data/platform/ssh/default').get('private_key')
                 if not isinstance(key, str) or not key.strip():
                     raise DiscoveryError('ssh_private_key_missing')
+                credentials.append(key.strip())
                 key_path = Path(temp) / 'ssh-key'
                 key_path.write_text(key.rstrip() + '\n')
                 key_path.chmod(0o600)
@@ -87,8 +90,7 @@ def run(directory, source, pattern, revision, timeout=900, inventory=None):
             args = ['ansible-playbook', str(source / 'playbooks/discover.yml'), argument]
             if inventory is not None:
                 args += ['-i', str(inventory)]
-            # Raw errors can include templated context/credentials. Keep them private
-            # only while the child runs; export bounded reason codes instead.
+            # Capture diagnostics privately, then publish bounded, redacted error text.
             with tempfile.TemporaryFile() as diagnostics:
                 process = subprocess.Popen(args, cwd=source, env=env, stdout=diagnostics,
                                            stderr=diagnostics, start_new_session=True)
@@ -117,6 +119,10 @@ def run(directory, source, pattern, revision, timeout=900, inventory=None):
                     diagnostic_reason = 'inventory_authentication_failed'
                 elif 'leaves us with no hosts to target' in message:
                     diagnostic_reason = 'no_targets'
+                if (rc or diagnostic_reason) and message.strip():
+                    for credential in credentials:
+                        message = message.replace(credential, '[REDACTED]')
+                    manifest['diagnostics'] = diagnostic(message, limit=16384)
     except (Exception, KeyboardInterrupt) as error:
         manifest['outcome'] = 'dependency_failed'
         manifest['reason'] = str(error) if isinstance(error, DiscoveryError) else type(error).__name__
