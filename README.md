@@ -47,9 +47,13 @@ into a private per-run file; `ANSIBLE_PRIVATE_KEY_FILE` supplies the default, wh
 native host variables retain their normal precedence. The current workflow expects
 this default key to exist before discovery starts.
 
-Core installs the operator's verified SSH host keys through
-`platform_known_hosts_file`. An empty trust file does not auto-accept a target.
-SSH and service TLS verification stay enabled. Python or other prerequisites
+SSH uses trust on first use (`StrictHostKeyChecking=accept-new`): the first
+connection automatically records the presented host key in
+`/run/platform/ssh-trust/known_hosts`; a changed known key is rejected. The first
+key is not independently verified. Core mounts persistent writable host storage
+for this file, preserving it across runner recreation, reboots and Ansible reruns.
+Adding a target requires no Ansible run. Service TLS verification stays enabled.
+See the Core Platform guide for handling a legitimate host-key replacement. Python or other prerequisites
 required by the selected Ansible connection/facts module must already exist on
 the host. The playbook does not install packages or intentionally alter target
 configuration; normal Ansible temporary module execution is expected.

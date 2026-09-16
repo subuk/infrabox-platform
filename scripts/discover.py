@@ -83,7 +83,7 @@ def run(directory, source, pattern, revision, timeout=900, inventory=None):
                 key_path.write_text(key.rstrip() + '\n')
                 key_path.chmod(0o600)
                 env['ANSIBLE_PRIVATE_KEY_FILE'] = str(key_path)
-                env['ANSIBLE_SSH_ARGS'] = '-C -o ControlMaster=auto -o ControlPersist=60 -o UserKnownHostsFile=/run/platform/trust/known_hosts'
+                env['ANSIBLE_SSH_ARGS'] = '-C -o ControlMaster=auto -o ControlPersist=60 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/run/platform/ssh-trust/known_hosts'
             args = ['ansible-playbook', str(source / 'playbooks/discover.yml'), argument]
             if inventory is not None:
                 args += ['-i', str(inventory)]
