@@ -311,7 +311,7 @@ class Reconciler:
             else:
                 self.patch(current, desired, 'module')
         else:
-            self.create(api.dcim.modules, {'device': device.id, 'module_bay': bay.id, 'status': 'active', **desired}, 'module')
+            self.create(api.dcim.modules, {'device': device.id, 'module_bay': bay.id, 'status': 'active', 'replicate_components': False, 'adopt_components': False, **desired}, 'module')
 
 
 def reconcile(directory, api, dependency_error=None):
@@ -350,6 +350,8 @@ def reconcile(directory, api, dependency_error=None):
                 elif type(error) is ValueError and str(error) in ('host_identity_changed','host_identity_ambiguous','invalid_host_identity','facts_too_large','discovery_profile_missing'):
                     reason = str(error)
                 result['errors'].append(reason)
+                if isinstance(status, int):
+                    result['errors'].append('netbox_http_' + str(status))
             result['changes'] = worker.changes
             result['warnings'] += worker.warnings
         else:

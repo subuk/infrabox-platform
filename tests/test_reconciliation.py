@@ -43,7 +43,9 @@ class ReconciliationTests(unittest.TestCase):
     def test_unchanged_has_no_writes(self):
         host,api=fixture()
         r=Reconciler(api)
-        r.apply({'object_id':1,'object_type':'vm','name':'vm'},normalize(FACTS,'vm'),{})
+        observation={'discovery_last_success':'2026-09-18T00:00:00+00:00','discovery_source':'ansible'}
+        host.custom_fields.update(observation)
+        r.apply({'object_id':1,'object_type':'vm','name':'vm'},normalize(FACTS,'vm'),observation)
         self.assertEqual(host.writes,[])
 
     def test_minimal_update_preserves_user_fields(self):
@@ -63,10 +65,12 @@ class ReconciliationTests(unittest.TestCase):
             records=[{'object_id':i,'object_type':'vm','name':str(i),'status':'succeeded'} for i in (1,2)]
             for i in (1,2): (path/'facts'/f'vm-{i}.json').write_text(json.dumps(FACTS))
             (path/'run.json').write_text(json.dumps(dict(run_id='1',attempt='1',revision='a'*40,pattern='1,2',started_at='2026-09-18T00:00:00Z',finished_at='2026-09-18T00:01:00Z',ansible_return_code=0,outcome='success',hosts=records)))
-            with patch.object(Reconciler,'apply',side_effect=[RuntimeError('private body'),False]):
+            error=RuntimeError('private body');error.req=NS(status_code=401)
+            with patch.object(Reconciler,'apply',side_effect=[error,False]):
                 report=reconcile(path,None)
             self.assertEqual(report['counts']['reconciled'],1)
             self.assertEqual(report['counts']['failed'],1)
+            self.assertIn('netbox_auth',report['hosts'][0]['errors'])
             self.assertNotIn('private body',json.dumps(report))
 
     def test_workflow_separates_compact_and_debug_artifacts(self):
