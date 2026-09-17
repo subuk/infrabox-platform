@@ -9,7 +9,7 @@ from results import atomic
 path = Path('/data/discovery-health.json')
 old = json.loads(path.read_text()) if path.exists() else {}
 if sys.argv[1] == 'start':
-    value = {'run_id': os.environ['GITEA_RUN_ID'], 'started': time.time(), 'running': True,
+    value = {**old, 'run_id': os.environ['GITEA_RUN_ID'], 'started': time.time(), 'running': True,
              'last_success': old.get('last_success', 0)}
 else:
     value = {**old, 'running': False, 'finished': time.time(), 'workflow_success': os.environ.get('PLATFORM_JOB_STATUS') == 'success'}

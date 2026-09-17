@@ -258,7 +258,7 @@ class Reconciler:
         for address in data.addresses:
             # Interface VRF is the explicit context. Never infer it from address ranges.
             vrf = ident(getattr(interface, 'vrf', None))
-            matches = list(api.ipam.ip_addresses.filter(address=address))
+            matches = list(api.ipam.ip_addresses.filter(address=str(ipaddress.ip_interface(address).ip)))
             same = [ip for ip in matches if ident(ip.vrf) == vrf and ip.assigned_object_type == object_type and ip.assigned_object_id == interface.id]
             if len(same) == 1:
                 continue
@@ -291,12 +291,12 @@ class Reconciler:
             return
         if types:
             module_type = types[0]
-            if ident(module_type.profile) != profile.id or any(dict(module_type.attribute_data).get(k) != v for k, v in data.attributes.items()):
+            if ident(module_type.profile) != profile.id or any(dict(module_type.attributes).get(k) != v for k, v in data.attributes.items()):
                 self.warnings.append('module_type_conflict:' + data.slot)
                 return
         else:
             module_type = self.create(api.dcim.module_types, {'manufacturer': manufacturer.id, 'model': data.model,
-                'profile': profile.id, 'attribute_data': data.attributes}, 'module_type')
+                'profile': profile.id, 'attributes': data.attributes}, 'module_type')
         modules = list(api.dcim.modules.filter(device_id=device.id, module_bay_id=bay.id))
         desired = {'module_type': module_type.id}
         if data.serial:
@@ -344,7 +344,7 @@ def reconcile(directory, api, dependency_error=None):
                 result['reconciliation_status'] = 'failed'
                 # HTTP bodies/URLs can contain credentials; report only a fixed class/status.
                 status = getattr(getattr(error, 'req', None), 'status_code', None)
-                reason = 'netbox_auth' if status in (401, 403) else 'netbox_api' if status else 'reconciliation_error'
+                reason = 'netbox_auth' if status in (401, 403) else 'netbox_api' if status or type(error).__module__.startswith('requests.') else 'reconciliation_error'
                 if dependency_error:
                     reason = dependency_error
                 elif type(error) is ValueError and str(error) in ('host_identity_changed','host_identity_ambiguous','invalid_host_identity','facts_too_large','discovery_profile_missing'):
