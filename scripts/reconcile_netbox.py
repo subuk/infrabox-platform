@@ -84,11 +84,11 @@ def dmi_components(text, warnings):
             if cores.isdigit() and positive(int(cores)):
                 attrs['cores'] = int(cores)
         else:
-            size = re.fullmatch(r'([0-9]+) (MB|GB|TB)', values.get('Size', ''))
+            size = re.fullmatch(r'([0-9]+) (MB|GB|TB|MiB|GiB|TiB)', values.get('Size', ''))
             if not size:
                 warnings.append('dmi_memory_capacity_unknown')
                 continue
-            attrs['capacity_mib'] = int(size[1]) * {'MB': 1, 'GB': 1024, 'TB': 1048576}[size[2]]
+            attrs['capacity_mib'] = int(size[1]) * {'MB': 1, 'MiB': 1, 'GB': 1024, 'GiB': 1024, 'TB': 1048576, 'TiB': 1048576}[size[2]]
             kind = clean(values.get('Type'))
             if kind:
                 attrs['technology'] = kind
@@ -173,6 +173,14 @@ class Reconciler:
             old = getattr(obj, key, None)
             if key == 'custom_fields':
                 value = {**(old or {}), **value}
+                previous = (old or {}).get('discovery_last_success')
+                current = value.get('discovery_last_success')
+                if isinstance(previous, str) and isinstance(current, str):
+                    try:
+                        if datetime.fromisoformat(previous.replace('Z', '+00:00')) == datetime.fromisoformat(current.replace('Z', '+00:00')):
+                            value['discovery_last_success'] = previous
+                    except ValueError:
+                        pass
             if ident(old) != value:
                 diff[key] = value
         if diff:

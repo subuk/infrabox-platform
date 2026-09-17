@@ -11,6 +11,8 @@ old = json.loads(path.read_text()) if path.exists() else {}
 if sys.argv[1] == 'start':
     value = {**old, 'run_id': os.environ['GITEA_RUN_ID'], 'started': time.time(), 'running': True,
              'last_success': old.get('last_success', 0)}
+elif sys.argv[1] == 'complete':
+    value = {**old, 'finished': time.time(), 'workflow_success': old.get('workflow_success', False) and os.environ.get('PLATFORM_JOB_STATUS') == 'success'}
 else:
     value = {**old, 'running': False, 'finished': time.time(), 'workflow_success': os.environ.get('PLATFORM_JOB_STATUS') == 'success'}
     report = Path(os.environ['PLATFORM_RESULTS_DIR']) / 'reconciliation-summary.json'

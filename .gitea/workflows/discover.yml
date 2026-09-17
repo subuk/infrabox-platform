@@ -70,3 +70,8 @@ jobs:
       - name: Remove local results after publication
         if: always()
         run: python3 /opt/platform/scripts/workspace.py --cleanup
+      - name: Record final workflow status after cleanup
+        if: always()
+        env:
+          PLATFORM_JOB_STATUS: ${{ job.status }}
+        run: python3 /opt/platform/scripts/discovery_health.py complete

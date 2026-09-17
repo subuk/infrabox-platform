@@ -36,7 +36,7 @@ class ReconciliationTests(unittest.TestCase):
     def test_representative_normalization_and_dmi(self):
         h=normalize(FACTS,'vm')
         self.assertEqual((h.platform,h.vcpus,h.memory,h.architecture),('AlmaLinux 10.2',4,7800,'x86_64'))
-        h=normalize(FACTS,'device',{'status':'succeeded','stdout':'Handle 0x01, DMI type 17, 84 bytes\nMemory Device\n\tLocator: DIMM_A1\n\tManufacturer: Samsung\n\tPart Number: ABC\n\tSize: 16 GB\n\tSerial Number: 123\n\tType: DDR4\n'})
+        h=normalize(FACTS,'device',{'status':'succeeded','stdout':'Handle 0x01, DMI type 17, 84 bytes\nMemory Device\n\tLocator: DIMM_A1\n\tManufacturer: Samsung\n\tPart Number: ABC\n\tSize: 16 GiB\n\tSerial Number: 123\n\tType: DDR4\n'})
         self.assertEqual(h.components[0].attributes,{'capacity_mib':16384,'technology':'DDR4'})
         self.assertIn('dmi_unavailable',normalize(FACTS,'device',{'status':'unavailable'}).warnings)
 
@@ -45,6 +45,7 @@ class ReconciliationTests(unittest.TestCase):
         r=Reconciler(api)
         observation={'discovery_last_success':'2026-09-18T00:00:00+00:00','discovery_source':'ansible'}
         host.custom_fields.update(observation)
+        host.custom_fields['discovery_last_success']='2026-09-18T00:00:00Z'
         r.apply({'object_id':1,'object_type':'vm','name':'vm'},normalize(FACTS,'vm'),observation)
         self.assertEqual(host.writes,[])
 
