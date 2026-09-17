@@ -13,6 +13,7 @@ jobs:
     permissions:
       contents: read
     env:
+      PLATFORM_INTERFACE_EXCLUDE_PATTERNS: ${{ vars.PLATFORM_INTERFACE_EXCLUDE_PATTERNS || 'cilium_*,lxc*' }}
       PLATFORM_TARGETS: ${{ inputs.targets }}
       GITEA_SERVER_URL: ${{ gitea.server_url }}
       GITEA_REPOSITORY: ${{ gitea.repository }}

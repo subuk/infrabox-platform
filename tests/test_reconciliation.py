@@ -39,6 +39,12 @@ class ReconciliationTests(unittest.TestCase):
         h=normalize(FACTS,'device',{'status':'succeeded','stdout':'Handle 0x01, DMI type 17, 84 bytes\nMemory Device\n\tLocator: DIMM_A1\n\tManufacturer: Samsung\n\tPart Number: ABC\n\tSize: 16 GiB\n\tSerial Number: 123\n\tType: DDR4\n'})
         self.assertEqual(h.components[0].attributes,{'capacity_mib':16384,'technology':'DDR4'})
         self.assertIn('dmi_unavailable',normalize(FACTS,'device',{'status':'unavailable'}).warnings)
+        names=['eno1','bond0','br0','vlan100','cilium_host','cilium_net','lxc_health','lxc123abc']
+        facts={**FACTS,'ansible_interfaces':names,**{'ansible_'+n:{} for n in names}}
+        with patch.dict('os.environ', {'PLATFORM_INTERFACE_EXCLUDE_PATTERNS':'cilium_*,lxc*'}):
+            self.assertEqual([i.name for i in normalize(facts,'vm').interfaces],names[:4])
+        with patch.dict('os.environ', {'PLATFORM_INTERFACE_EXCLUDE_PATTERNS':''}):
+            self.assertEqual([i.name for i in normalize(facts,'vm').interfaces],names)
 
     def test_unchanged_has_no_writes(self):
         host,api=fixture()

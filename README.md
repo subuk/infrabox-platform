@@ -164,3 +164,9 @@ no infrastructure writes; fresh successful collection updates provenance only.
 Ownership, ambiguity rules and authorization boundaries are documented in Core's
 `docs/discovery-reconciliation.md`. Run focused tests with
 `python -m unittest discover -s tests -p test_reconciliation.py`.
+
+Discovery excludes interface names matching `cilium_*` and `lxc*` from NetBox
+reconciliation, including their MACs and IPs. Raw facts remain complete. Override
+`PLATFORM_INTERFACE_EXCLUDE_PATTERNS` in Gitea repository variables with comma-separated,
+case-sensitive shell globs; use `,` to disable exclusions (an empty repository value
+uses the default). Existing NetBox interfaces are never automatically deleted.

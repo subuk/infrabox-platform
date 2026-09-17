@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import ipaddress
+from fnmatch import fnmatchcase
 import json
 import os
 from pathlib import Path
@@ -112,8 +113,12 @@ def normalize(facts, kind, dmi=None):
     out.serial = clean(fact('product_serial'), 50)
     if kind == 'vm':
         out.vcpus, out.memory = positive(fact('processor_vcpus')), positive(fact('memtotal_mb'))
+    excluded = os.environ.get('PLATFORM_INTERFACE_EXCLUDE_PATTERNS', 'cilium_*,lxc*')
+    patterns = [p.strip() for p in excluded.split(',') if p.strip()]
     for name in fact('interfaces') or []:
         if not clean(name, 64) or name == 'lo':
+            continue
+        if any(fnmatchcase(name, pattern) for pattern in patterns):
             continue
         data = fact(name)
         if not isinstance(data, dict):
