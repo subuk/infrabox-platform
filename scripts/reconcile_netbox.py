@@ -291,7 +291,7 @@ class Reconciler:
             return
         if types:
             module_type = types[0]
-            if ident(module_type.profile) != profile.id or any(module_type.attribute_data.get(k) != v for k, v in data.attributes.items()):
+            if ident(module_type.profile) != profile.id or any(dict(module_type.attribute_data).get(k) != v for k, v in data.attributes.items()):
                 self.warnings.append('module_type_conflict:' + data.slot)
                 return
         else:

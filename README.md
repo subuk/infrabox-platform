@@ -143,3 +143,24 @@ PATH="$PWD/.venv/bin:$PATH" .venv/bin/python -m unittest discover -s tests -v
 The focused fixtures exercise actual Ansible selection and local fact gathering,
 plus result confidentiality and partial failure. They do not replace the real
 Gitea/manual-dispatch/artifact and managed-host acceptance checks.
+
+
+## KRG-21 reconciliation
+
+After collection, `scripts/reconcile_netbox.py` consumes native per-host facts,
+validates a compact typed model and applies explicit NetBox diffs through pinned
+pynetbox. The dedicated svc-platform identity obtains its write-enabled token
+from the existing OpenBao path. Optional Linux `dmidecode --type 4,17` uses become;
+unavailable/failed DMI only warns. CPU/DIMM observations map to native module bays,
+module types/profiles and modules; guests never generate physical hardware.
+
+`reconciliation-<run>-<attempt>` is the compact schema-v2 report for OpenClaw.
+`discovery-<run>-<attempt>` retains raw filtered facts and DMI for human debugging.
+Both expire after seven days. Gateway never downloads the raw artifact. The
+workspace is cleaned after publication; `/data/discovery-health.json` retains
+compact monitoring state across runner restarts. Unchanged observations generate
+no infrastructure writes; fresh successful collection updates provenance only.
+
+Ownership, ambiguity rules and authorization boundaries are documented in Core's
+`docs/discovery-reconciliation.md`. Run focused tests with
+`python -m unittest discover -s tests -p test_reconciliation.py`.
