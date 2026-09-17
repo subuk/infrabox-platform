@@ -50,6 +50,12 @@ class CallbackModule(CallbackBase):
     def capture(self, result, status):
         try:
             record = self.hosts[result._host.name]
+            if 'discovery_dmi' in result._task.tags:
+                stdout = result._result.get('stdout', '')
+                ok = status == 'succeeded' and result._result.get('rc') == 0 and isinstance(stdout, str) and len(stdout) <= 1024 * 1024
+                atomic(self.directory / 'dmi' / Path(record['file']).name,
+                       {'status': 'succeeded' if ok else 'unavailable', 'stdout': stdout if ok else ''})
+                return
             if status == 'succeeded':
                 if result._task.action not in ('gather_facts', 'ansible.builtin.gather_facts'):
                     return

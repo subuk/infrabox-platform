@@ -3,10 +3,20 @@
   hosts: all
   gather_facts: true
   become: false
-  # These defaults belong only to setup; network facts modules retain their
-  # native options. Trusted Config Context retains ordinary Ansible precedence.
   module_defaults:
     ansible.builtin.setup:
       gather_subset: ['all', '!env', '!local', '!facter', '!ohai']
       fact_path: /dev/null
-  tasks: []
+  tasks:
+    - name: Optional physical CPU and DIMM observation
+      ansible.builtin.command:
+        argv: [dmidecode, --type, '4,17']
+      become: true
+      changed_when: false
+      ignore_errors: true
+      ignore_unreachable: true
+      when:
+        - not (infrabox_netbox_virtual | bool)
+        - ansible_facts.get('system') == 'Linux'
+        - ansible_facts.get('virtualization_role') != 'guest'
+      tags: [discovery_dmi]
