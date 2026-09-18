@@ -170,3 +170,17 @@ reconciliation, including their MACs and IPs. Raw facts remain complete. Overrid
 `PLATFORM_INTERFACE_EXCLUDE_PATTERNS` in Gitea repository variables with comma-separated,
 case-sensitive shell globs; use `,` to disable exclusions (an empty repository value
 uses the default). Existing NetBox interfaces are never automatically deleted.
+
+Disk reconciliation uses existing Linux `ansible_devices` facts. Whole `sd`, `hd`,
+`vd`, `xvd`, NVMe and MMC block devices are considered; partitions, loop/zram,
+device-mapper/LVM, software RAID and optical devices are not separate inventory assets.
+Repeated paths sharing a WWN or serial are collapsed; conflicting observations warn
+and are skipped. Physical disks require a model and stable WWN/serial (NVMe requires
+namespace EUI/UUID/WWN); unknown vendor uses the existing explicit generic manufacturer.
+Module profile `Discovery Disk` records exact bytes and rotational status; module
+custom field `discovery_disk_identity` retains identity. Its bay represents an
+observed disk identity, not an inferred chassis slot. Missing disks are never deleted.
+VM disks use native VirtualDisk name/size, with decimal MB rounded up, matching
+InfraBox's current NetBox `DISK_BASE_UNIT=1000`. Changing that NetBox setting requires
+updating the conversion. Passthrough host/guest ownership is not inferred from guest
+facts; guests registered as Device are still reported without physical modules.

@@ -22,6 +22,12 @@ class Interface:
 
 
 @dataclass
+class Disk:
+    name: str
+    size: int
+
+
+@dataclass
 class Component:
     slot: str
     profile: str
@@ -29,6 +35,7 @@ class Component:
     model: str
     serial: str
     attributes: dict
+    identity: str | None = None
 
 
 @dataclass
@@ -39,6 +46,7 @@ class Host:
     memory: int | None = None
     architecture: str | None = None
     interfaces: list[Interface] = field(default_factory=list)
+    disks: list[Disk] = field(default_factory=list)
     components: list[Component] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
@@ -102,6 +110,78 @@ def dmi_components(text, warnings):
     return components
 
 
+def normalize_disks(devices, kind, guest, out):
+    """Linux whole block devices only; logical stacks and partitions are not assets."""
+    if not isinstance(devices, dict) or (kind == 'device' and guest):
+        return
+    candidates = {}
+    for name, data in sorted(devices.items()):
+        if not re.fullmatch(r'(?:sd[a-z]+|hd[a-z]+|vd[a-z]+|xvd[a-z]+|nvme[0-9]+(?:c[0-9]+)?n[0-9]+|mmcblk[0-9]+)', name) or not isinstance(data, dict):
+            continue
+        try:
+            sectors, sector_size = (int(data[k]) for k in ('sectors', 'sectorsize'))
+            capacity = sectors * sector_size
+            if sectors <= 0 or sector_size not in (512, 1024, 2048, 4096, 8192) or capacity >= 2**63:
+                raise ValueError()
+        except (TypeError, ValueError, KeyError):
+            out.warnings.append('disk_capacity_unknown:' + name)
+            continue
+        serial = clean(data.get('serial'), 50)
+        if serial and re.fullmatch(r'0+', serial):
+            serial = None
+        wwn = clean(data.get('wwn'), 100)
+        links = data.get('links') or {}
+        ids = links.get('ids', []) if isinstance(links, dict) else []
+        ids = ids if isinstance(ids, list) else []
+        if not wwn:
+            for prefix in ('wwn-', 'nvme-eui.', 'nvme-uuid.'):
+                found = sorted({v[len(prefix):] for v in ids if isinstance(v, str) and v.startswith(prefix) and '-part' not in v})
+                if len(found) == 1:
+                    wwn = found[0]
+                    break
+        if wwn:
+            wwn = wwn.lower().removeprefix('0x')
+            if not re.fullmatch(r'[0-9a-f-]{8,100}', wwn) or not wwn.replace('0', '').replace('-', ''):
+                wwn = None
+        # NVMe serial identifies a controller, not necessarily a single namespace.
+        identity = ('wwn:' + wwn) if wwn else ('serial:' + serial if serial and not name.startswith('nvme') else None)
+        model = clean(data.get('model'))
+        vendor = clean(data.get('vendor'))
+        attrs = {'capacity_bytes': capacity}
+        if str(data.get('rotational')) in ('0', '1'):
+            attrs['rotational'] = str(data['rotational']) == '1'
+        if kind == 'device' and (not identity or not model):
+            out.warnings.append('disk_identity_incomplete:' + name)
+            continue
+        key = identity or 'name:' + name
+        candidate = (name, identity, vendor, model, serial, attrs)
+        if key in candidates:
+            old = candidates[key]
+            if old is not None and old[1:] != candidate[1:]:
+                candidates[key] = None
+                out.warnings.append('disk_identity_ambiguous:' + name)
+            continue
+        candidates[key] = candidate
+    for data in candidates.values():
+        if data is None:
+            continue
+        name, identity, vendor, model, serial, attrs = data
+        if kind == 'vm':
+            # Native NetBox DISK_BASE_UNIT=1000: integer MB, rounded up by <1 MB.
+            size = (attrs['capacity_bytes'] + 999999) // 1000000
+            if size >= 2**31:
+                out.warnings.append('disk_capacity_out_of_range:' + name)
+                continue
+            out.disks.append(Disk(name, size))
+        else:
+            import hashlib
+            slot = 'Disk ' + identity[:40] + '-' + hashlib.sha256(identity.encode()).hexdigest()[:12]
+            if not vendor:
+                out.warnings.append('disk_manufacturer_unknown:' + name)
+            out.components.append(Component(slot, 'Disk', vendor or 'InfraBox Generic', model,
+                                            serial or '', attrs, identity))
+
+
 def normalize(facts, kind, dmi=None):
     def fact(name):
         return facts.get('ansible_' + name, facts.get(name))
@@ -153,6 +233,7 @@ def normalize(facts, kind, dmi=None):
                 out.warnings.append('dmi_parse_failed')
         else:
             out.warnings.append('dmi_unavailable' if dmi else 'dmi_not_collected')
+    normalize_disks(fact('devices'), kind, fact('virtualization_role') == 'guest', out)
     return out
 
 
@@ -235,6 +316,9 @@ class Reconciler:
         self.patch(obj, desired, record['object_type'])
         for interface in host.interfaces:
             self.interface(obj, vm, interface)
+        if vm:
+            for disk in host.disks:
+                self.disk(obj, disk)
         if not vm:
             for component in host.components:
                 self.component(obj, component)
@@ -245,6 +329,16 @@ class Reconciler:
         if provenance_changed:
             self.changes.pop()
         return provenance_changed
+
+    def disk(self, host, data):
+        endpoint = self.api.virtualization.virtual_disks
+        matches = list(endpoint.filter(virtual_machine_id=host.id, name=data.name))
+        if len(matches) > 1:
+            self.warnings.append('virtual_disk_ambiguous:' + data.name)
+        elif matches:
+            self.patch(matches[0], {'size': data.size}, 'virtual_disk')
+        else:
+            self.create(endpoint, {'virtual_machine': host.id, 'name': data.name, 'size': data.size}, 'virtual_disk')
 
     def interface(self, host, vm, data):
         api = self.api
@@ -312,6 +406,8 @@ class Reconciler:
                 'profile': profile.id, 'attributes': data.attributes}, 'module_type')
         modules = list(api.dcim.modules.filter(device_id=device.id, module_bay_id=bay.id))
         desired = {'module_type': module_type.id}
+        if data.identity:
+            desired['custom_fields'] = {'discovery_disk_identity': data.identity}
         if data.serial:
             desired['serial'] = data.serial
         if len(modules) > 1:

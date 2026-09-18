@@ -80,6 +80,53 @@ class ReconciliationTests(unittest.TestCase):
             self.assertIn('netbox_auth',report['hosts'][0]['errors'])
             self.assertNotIn('private body',json.dumps(report))
 
+    def test_disk_normalization_identity_capacity_and_exclusions(self):
+        base={'sectors':1000000,'sectorsize':'4096','model':'Example SSD','vendor':'Example',
+              'serial':'SER1','wwn':'0x5000123456789abc','rotational':'0'}
+        devices={name:dict(base) for name in ('sda','sdb','sda1','dm-0','md0','loop0','zram0','sr0')}
+        facts={**FACTS,'ansible_devices':devices}
+        vm=normalize(facts,'vm')
+        self.assertEqual([(d.name,d.size) for d in vm.disks],[('sda',4096)])
+        physical=normalize(facts,'device')
+        self.assertEqual(len(physical.components),1)
+        disk=physical.components[0]
+        self.assertEqual((disk.profile,disk.serial,disk.identity),('Disk','SER1','wwn:5000123456789abc'))
+        self.assertEqual(disk.attributes,{'capacity_bytes':4096000000,'rotational':False})
+        self.assertEqual(normalize({**facts,'ansible_virtualization_role':'guest'},'device').components,[])
+        self.assertEqual(normalize({**FACTS,'ansible_devices':{'sda':{'sectors':1}}},'device').components,[])
+        nvme={**base,'wwn':None,'serial':None,'vendor':None,'links':{'ids':['nvme-eui.353041304e2850330025384600000001']}}
+        d=normalize({**FACTS,'ansible_devices':{'nvme0n1':nvme}},'device').components[0]
+        self.assertEqual(d.manufacturer,'InfraBox Generic')
+        self.assertTrue(d.identity.startswith('wwn:3530'))
+        self.assertEqual(d.serial,'')
+        devices['sdb']['sectors']=999
+        ambiguous=normalize(facts,'device')
+        self.assertEqual(ambiguous.components,[])
+        self.assertIn('disk_identity_ambiguous:sdb',ambiguous.warnings)
+
+    def test_virtual_disk_create_resize_preserve_and_replay(self):
+        class Disks(Endpoint):
+            def create(self, values):
+                obj=Object(id=9,virtual_machine_id=values['virtual_machine'],writes=[],owner='keep',description='keep',**values)
+                self.objects.append(obj)
+                return obj
+        host,api=fixture();api.virtualization.virtual_disks=Disks()
+        facts={**FACTS,'ansible_devices':{'vda':{'sectors':20971520,'sectorsize':512}}}
+        record={'object_id':1,'object_type':'vm','name':'vm'}
+        r=Reconciler(api);r.apply(record,normalize(facts,'vm'),{})
+        disk=api.virtualization.virtual_disks.objects[0]
+        self.assertEqual((disk.name,disk.size),('vda',10738))
+        self.assertTrue(r.changes[0]['created'])
+        r=Reconciler(api);r.apply(record,normalize(facts,'vm'),{})
+        self.assertEqual(r.changes,[])
+        facts['ansible_devices']['vda']['sectors']*=2
+        Reconciler(api).apply(record,normalize(facts,'vm'),{})
+        self.assertEqual(disk.writes,[{'size':21475}])
+        self.assertEqual((disk.owner,disk.description),('keep','keep'))
+        r=Reconciler(api);r.apply(record,normalize(FACTS,'vm'),{})
+        self.assertEqual(r.changes,[])
+        self.assertEqual(len(api.virtualization.virtual_disks.objects),1)
+
     def test_workflow_separates_compact_and_debug_artifacts(self):
         text=(Path(__file__).resolve().parents[1]/'.gitea/workflows/discover.yml').read_text()
         self.assertIn('scripts/reconcile_netbox.py "$PLATFORM_RESULTS_DIR"',text)
