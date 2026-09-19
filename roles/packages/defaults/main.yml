@@ -1,0 +1,3 @@
+---
+# Explicit packages to keep installed. No upgrades/removal are implied.
+packages_names: []

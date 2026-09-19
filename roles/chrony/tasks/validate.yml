@@ -1,0 +1,19 @@
+---
+- name: Require supported target operating system
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.distribution == 'AlmaLinux'
+      - ansible_facts.distribution_major_version == '10'
+      - ansible_facts.service_mgr == 'systemd'
+    fail_msg: This role currently supports AlmaLinux 10 with systemd only.
+- name: Validate chrony desired configuration
+  ansible.builtin.assert:
+    that:
+      - chrony_servers is sequence and chrony_servers is not string
+      - chrony_servers | length + chrony_pools | length > 0
+      - chrony_servers | select('match', '^[A-Za-z0-9][A-Za-z0-9.:-]*$') | list | length == chrony_servers | length
+      - chrony_makestep is boolean
+      - chrony_pools is sequence and chrony_pools is not string
+      - chrony_pools | select('match', '^[A-Za-z0-9][A-Za-z0-9.:-]*$') | list | length == chrony_pools | length
+      - chrony_dhcp_sources is boolean
+    fail_msg: Specify chrony_servers or chrony_pools with valid names or addresses.

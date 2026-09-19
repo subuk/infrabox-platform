@@ -1,0 +1,30 @@
+---
+- name: Require supported target operating system
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.distribution == 'AlmaLinux'
+      - ansible_facts.distribution_major_version == '10'
+      - ansible_facts.service_mgr == 'systemd'
+    fail_msg: This role currently supports AlmaLinux 10 with systemd only.
+- name: Validate sshd desired settings
+  ansible.builtin.assert:
+    that:
+      - sshd_log_level in ['QUIET', 'FATAL', 'ERROR', 'INFO', 'VERBOSE']
+      - sshd_client_alive_interval is integer and sshd_client_alive_interval >= 0 and sshd_client_alive_interval <= 3600
+      - sshd_client_alive_count_max is integer and sshd_client_alive_count_max >= 1 and sshd_client_alive_count_max <= 10
+- name: Verify current SSH configuration before changing it
+  become: true
+  ansible.builtin.command:
+    argv: [/usr/sbin/sshd, -t]
+  check_mode: false
+  changed_when: false
+- name: Read the SSH include contract
+  become: true
+  ansible.builtin.slurp:
+    src: /etc/ssh/sshd_config
+  register: sshd_runtime_main
+- name: Require the managed drop-in include before active settings
+  ansible.builtin.assert:
+    that:
+      - (sshd_runtime_main.content | b64decode).splitlines() | reject('match', '^\s*(#|$)') | list | first == 'Include /etc/ssh/sshd_config.d/*.conf'
+    fail_msg: SSH configuration must begin with the standard drop-in Include; access migration is outside this role.

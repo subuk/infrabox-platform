@@ -1,0 +1,61 @@
+name: Configure managed hosts
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: NetBox Ansible host pattern
+        default: all
+        type: string
+      check:
+        description: Check only (false explicitly applies configuration)
+        default: true
+        type: boolean
+      diff:
+        description: Show configuration differences
+        default: true
+        type: boolean
+jobs:
+  configure:
+    # Same-repository developers are trusted code authors. Forks never enter this runner.
+    if: gitea.event_name != 'pull_request' || gitea.event.pull_request.head.repo.full_name == gitea.repository
+    runs-on: infrabox-platform
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      GITEA_REPOSITORY: ${{ gitea.repository }}
+      GITEA_EVENT_NAME: ${{ gitea.event_name }}
+      GITEA_RUN_ID: ${{ gitea.run_id }}
+      GITEA_RUN_ATTEMPT: ${{ gitea.run_attempt }}
+      PLATFORM_LIMIT: ${{ inputs.limit }}
+      PLATFORM_CHECK: ${{ inputs.check }}
+      PLATFORM_DIFF: ${{ inputs.diff }}
+      NETBOX_API: ${{ vars.NETBOX_API }}
+      VAULT_ADDR: ${{ vars.VAULT_ADDR }}
+      PLATFORM_MANAGED_TAG: ${{ vars.PLATFORM_MANAGED_TAG }}
+      PLATFORM_KV_MOUNT: ${{ vars.PLATFORM_KV_MOUNT }}
+      PLATFORM_PRIVATE_DIR: /run/platform-jobs
+      PLATFORM_CONFIGURE_RESULTS_DIR: ${{ runner.temp }}/configure-${{ gitea.run_id }}-${{ gitea.run_attempt }}
+    steps:
+      - name: Checkout the reviewed head or selected manual revision
+        uses: https://github.com/actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          github-server-url: ${{ gitea.server_url }}
+          ref: ${{ gitea.event.pull_request.head.sha || gitea.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate policy, impact and effective configuration; execute selected mode
+        run: python3 /opt/platform/scripts/configure.py
+      - name: Publish configure evidence
+        if: always()
+        uses: https://github.com/ChristopherHX/gitea-upload-artifact@81f940d004763f986ba3582c007fd842dd5cb0d7
+        with:
+          name: configure-${{ gitea.run_id }}-${{ gitea.run_attempt }}
+          path: ${{ env.PLATFORM_CONFIGURE_RESULTS_DIR }}
+          if-no-files-found: error
+          retention-days: 7
+      - name: Clean configure results
+        if: always()
+        run: python3 /opt/platform/scripts/configure_cleanup.py

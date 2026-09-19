@@ -1,0 +1,8 @@
+---
+# At least one server or pool is required when enabled. Hostnames/IPs, without chrony directives or options.
+chrony_servers: []
+# Permit a startup correction larger than one second during the first three updates.
+chrony_makestep: true
+# DNS pools and DHCP sources can preserve the distribution configuration.
+chrony_pools: []
+chrony_dhcp_sources: true

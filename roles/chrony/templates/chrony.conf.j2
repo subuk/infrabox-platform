@@ -1,0 +1,17 @@
+# Managed by InfraBox Platform from NetBox Config Context.
+{% for server in chrony_servers %}
+server {{ server }} iburst
+{% endfor %}
+{% for pool in chrony_pools %}
+pool {{ pool }} iburst
+{% endfor %}
+{% if chrony_dhcp_sources %}
+sourcedir /run/chrony-dhcp
+{% endif %}
+driftfile /var/lib/chrony/drift
+{% if chrony_makestep %}
+makestep 1.0 3
+{% endif %}
+rtcsync
+ntsdumpdir /var/lib/chrony
+logdir /var/log/chrony

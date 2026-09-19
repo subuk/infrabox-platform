@@ -1,0 +1,30 @@
+---
+- name: Create the local validation helper directory
+  become: true
+  ansible.builtin.file:
+    path: /usr/local/libexec
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  tags: [sshd, install]
+- name: Install full SSH candidate validator
+  become: true
+  ansible.builtin.copy:
+    src: validate-sshd.py
+    dest: /usr/local/libexec/infrabox-validate-sshd
+    mode: '0755'
+    owner: root
+    group: root
+  tags: [sshd, install]
+- name: Configure SSH operational settings
+  become: true
+  ansible.builtin.template:
+    src: sshd.conf.j2
+    dest: /etc/ssh/sshd_config.d/00-infrabox.conf
+    mode: '0600'
+    owner: root
+    group: root
+    validate: /usr/local/libexec/infrabox-validate-sshd %s
+  notify: sshd reload
+  tags: [sshd, configure]

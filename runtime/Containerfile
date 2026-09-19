@@ -14,6 +14,7 @@ COPY requirements.yml /opt/platform/requirements.yml
 RUN ansible-galaxy collection install -r /opt/platform/requirements.yml -p /opt/collections
 ENV ANSIBLE_COLLECTIONS_PATH=/opt/collections
 COPY . /opt/platform
+RUN python3 /opt/platform/scripts/runtime_contract.py /opt/platform > /opt/platform/RUNTIME_FINGERPRINT
 ARG REVISION
 RUN test -n "$REVISION" && printf '%s\n' "$REVISION" > /opt/platform/REVISION
 LABEL org.opencontainers.image.revision=$REVISION

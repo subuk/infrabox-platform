@@ -1,0 +1,15 @@
+---
+- name: Require supported target operating system
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.distribution == 'AlmaLinux'
+      - ansible_facts.distribution_major_version == '10'
+      - ansible_facts.service_mgr == 'systemd'
+    fail_msg: This role currently supports AlmaLinux 10 with systemd only.
+- name: Require an explicit package list
+  ansible.builtin.assert:
+    that:
+      - packages_names is sequence and packages_names is not string
+      - packages_names | length > 0
+      - packages_names | select('match', '^[A-Za-z0-9][A-Za-z0-9+_.-]*$') | list | length == packages_names | length
+    fail_msg: packages_names must contain explicit package names, without wildcards.

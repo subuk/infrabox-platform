@@ -1,0 +1,36 @@
+---
+- name: Validate all selected hosts before configuration
+  hosts: all
+  gather_facts: false
+  any_errors_fatal: true
+  strategy: linear
+  tasks:
+    - name: Gather minimal facts only for hosts with enabled roles
+      ansible.builtin.setup:
+        gather_subset: ['!all', '!min', distribution, service_mgr]
+      when: infrabox_roles | default({}) | dict2items | selectattr('value.enabled', 'equalto', true) | list | length > 0
+      tags: [always, verify]
+    - name: Validate every enabled role before any changes
+      ansible.builtin.include_role:
+        name: '{{ infrabox_runtime_role }}'
+        tasks_from: validate
+        apply:
+          tags: [always, verify]
+      loop: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/role-order.json') | from_json }}"
+      loop_control:
+        loop_var: infrabox_runtime_role
+      when: (infrabox_roles | default({})).get(infrabox_runtime_role, {}).get('enabled', false)
+      tags: [always, verify]
+
+- name: Configure validated hosts in repository order
+  hosts: all
+  gather_facts: false
+  strategy: linear
+  tasks:
+    - name: Execute enabled roles
+      ansible.builtin.include_role:
+        name: '{{ infrabox_runtime_role }}'
+      loop: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/role-order.json') | from_json }}"
+      loop_control:
+        loop_var: infrabox_runtime_role
+      when: (infrabox_roles | default({})).get(infrabox_runtime_role, {}).get('enabled', false)

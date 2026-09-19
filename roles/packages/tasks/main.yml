@@ -1,0 +1,7 @@
+---
+- name: Install explicitly requested packages
+  become: true
+  ansible.builtin.dnf:
+    name: '{{ packages_names }}'
+    state: present
+  tags: [packages, install]

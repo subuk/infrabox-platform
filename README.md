@@ -184,3 +184,86 @@ VM disks use native VirtualDisk name/size, with decimal MB rounded up, matching
 InfraBox's current NetBox `DISK_BASE_UNIT=1000`. Changing that NetBox setting requires
 updating the conversion. Passthrough host/guest ownership is not inferred from guest
 facts; guests registered as Device are still reported without physical modules.
+
+## Configure hosts from NetBox (KRG-10)
+
+`site.yml` is the generic configuration entry point, available only through
+**Configure managed hosts** in local Gitea Actions. Discovery remains independent.
+The initial roles support AlmaLinux 10/systemd: `packages`, `chrony`, `sshd`.
+Public settings are documented in each role's `defaults/main.yml` and in
+`schemas/config-context.schema.json`. Example partial context:
+
+```json
+{
+  "infrabox_roles": {
+    "packages": {"enabled": true},
+    "chrony": {"enabled": true},
+    "sshd": {"enabled": true}
+  },
+  "packages_names": ["curl"],
+  "chrony_pools": ["2.almalinux.pool.ntp.org"],
+  "chrony_dhcp_sources": true,
+  "sshd_log_level": "INFO"
+}
+```
+
+Use native NetBox context assignment and merging. Core provides the **InfraBox
+Platform** Config Context Profile, synchronized from the schema of the approved
+Git source. Assign it to Platform contexts. NetBox 4.7 does not apply that profile
+to Device/VM local context, so configure independently validates the effective
+inventory including local overrides. Partial contexts need not contain all role
+inputs. Unknown role names, mistyped namespaced settings and reserved runtime
+variables fail validation. Disabled roles are skipped, not uninstalled.
+
+Role order belongs to `role-order.json`, never context mapping order. Configure
+loads the normal dynamic inventory once, privately snapshots it including groups,
+and uses that same snapshot for scope/preflight/execution. All selected hosts pass
+preflight before any configuration role starts. Temporary credentials and snapshot
+are removed after execution. Raw contexts are never published.
+
+Manual dispatch accepts only `limit`, `check`, `diff`. Defaults are `all`, `true`,
+`true`; applying requires explicit `check=false` on the deployed revision. Native
+Ansible patterns select hosts; zero targets fail. No arbitrary extra flags,
+inventory overrides or alternate playbooks are supported. Do not run ad-hoc
+Ansible directly against managed hosts.
+
+PRs check out the exact reviewed head and force `--check --diff`. Role-only changes
+select the union of hosts enabling changed roles. Global/shared/unknown paths
+select all managed hosts. Every changed role must have a real assigned target;
+one role without a target fails the whole job before Ansible execution. README,
+AGENTS and `docs/` changes alone require no host execution. Unit fixtures never
+count as PR target coverage. A role-only PR validates all enabled roles on its
+selected hosts, not only changed tasks.
+
+Only trusted same-repository code authors may use this credential-bearing runner.
+Fork PRs are excluded; Ansible check mode is not a sandbox for arbitrary code.
+PR policy and runtime compatibility checks run from `/opt/platform`, not a mutable
+checkout entry point. Requirements/runtime/policy-helper changes need a compatible
+candidate runtime provisioned through Core before the check can pass. Role-only
+changes can use the existing compatible runtime. Discovery retains its exact SHA
+runtime contract. Manual configure requires the currently deployed SHA.
+
+Promotion remains Core's selected canonical source/ref: retain the reviewed commit
+in the canonical source checkout, then deploy it through Core. Do not merge a
+local Gitea branch independently and assume Core will retain it. Core synchronizes
+only the protected execution branch, preserving PR branches and history.
+
+The `configure-<run>-<attempt>` artifact records executed/base revision, runtime
+fingerprint, mode, scope, selected hosts, task differences and host recap. Failures
+and partial applies remain failures. An interrupted apply is not transactional;
+repair desired state/code and rerun the same workflow. Nothing auto-rolls back.
+`sshd` manages only log level and client-alive settings, requires the standard
+leading drop-in include, validates the candidate/full daemon config and reloads.
+Ports, authentication, keys and access migration are outside the initial contract.
+First-install check mode reports deferred service checks without installing a
+package outside check mode. Check mode cannot prove runtime health after apply.
+
+Local focused validation (with the pinned dependencies and collections installed):
+
+```sh
+.venv/bin/python -m unittest discover -s tests -p test_configure.py -v
+ANSIBLE_STDOUT_CALLBACK=default .venv/bin/ansible-playbook -i localhost, site.yml --syntax-check
+```
+
+These local fixtures do not contact managed hosts. See `AGENTS.md` for the complete
+self-contained role-change checklist and authorization requirements.
