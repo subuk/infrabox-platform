@@ -80,9 +80,22 @@ def snapshot_inventory(inventory):
     groups.setdefault('all',{})['hosts']=hosts
     return groups
 
-def execute(argv,source,env,timeout=900):
-    with tempfile.TemporaryFile() as output:
-        process=subprocess.Popen(argv,cwd=source,env=env,stdout=output,stderr=output,start_new_session=True)
+def parse_inventory_output(code, stdout, stderr):
+    # This native nb_inventory warning does not indicate incomplete API results.
+    benign='[WARNING]: Invalid characters were found in group names but not replaced, use -vvvv to see details'
+    diagnostics=stderr.replace(benign,'').strip()
+    if code or diagnostics:
+        raise PolicyError('NetBox inventory loading failed or returned unexpected diagnostics')
+    try:
+        value=json.loads(stdout)
+    except ValueError:
+        raise PolicyError('NetBox inventory stdout is not JSON') from None
+    if not isinstance(value,dict): raise PolicyError('Invalid NetBox inventory structure')
+    return value
+
+def execute(argv,source,env,timeout=900,separate=False):
+    with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as errors:
+        process=subprocess.Popen(argv,cwd=source,env=env,stdout=output,stderr=errors,start_new_session=True)
         try:
             code=process.wait(timeout=timeout)
         finally:
@@ -93,7 +106,9 @@ def execute(argv,source,env,timeout=900):
                 os.killpg(process.pid,signal.SIGKILL); process.wait()
         output.seek(0)
         text=output.read(4*1024*1024).decode(errors='replace')
-    return code,text
+        errors.seek(0)
+        stderr=errors.read(1024*1024).decode(errors='replace')
+    return code,(text,stderr) if separate else text+stderr
 
 def run():
     os.umask(0o077)
@@ -121,10 +136,8 @@ def run():
             mount=env.get('PLATFORM_KV_MOUNT','kv')
             token=bao(mount+'/data/platform/netbox')['token']
             credentials.append(token);env['NETBOX_TOKEN']=token
-            code,output=execute(['ansible-inventory','-i',str(source/'inventory/netbox.yml'),'--list','--export'],source,env)
-            if code: raise PolicyError('NetBox inventory loading failed')
-            try: inventory=json.loads(output)
-            except ValueError: raise PolicyError('NetBox inventory returned diagnostics or invalid output') from None
+            code,(stdout,stderr)=execute(['ansible-inventory','-i',str(source/'inventory/netbox.yml'),'--list','--export'],source,env,separate=True)
+            inventory=parse_inventory_output(code,stdout,stderr)
             hosts=inventory.get('_meta',{}).get('hostvars',{})
             if not hosts: raise PolicyError('NetBox inventory has no managed hosts')
             # Validate assignment structure globally before role impact, role inputs only in final scope.

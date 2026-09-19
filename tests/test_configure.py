@@ -10,7 +10,7 @@ import yaml
 from jsonschema import Draft202012Validator
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'scripts'))
-from configure import boolean, policy, registry, validate_hosts, snapshot_inventory
+from configure import boolean, policy, registry, validate_hosts, snapshot_inventory, parse_inventory_output
 from impact import PolicyError, impact, changed_paths
 from runtime_contract import fingerprint
 
@@ -21,6 +21,12 @@ class ConfigurationTests(unittest.TestCase):
                          'infrabox_roles':{'chrony':{'enabled':True}},'chrony_servers':['ntp.example.com']},
                     'two':{'infrabox_netbox_id':2,'infrabox_netbox_virtual':True,
                          'infrabox_roles':{'sshd':{'enabled':True}}}}
+    def test_inventory_warning_does_not_corrupt_json_or_hide_failures(self):
+        warning='[WARNING]: Invalid characters were found in group names but not replaced, use -vvvv to see details\n'
+        self.assertEqual(parse_inventory_output(0,'{"_meta":{"hostvars":{}}}',warning),{'_meta':{'hostvars':{}}})
+        for code,text,error in ((1,'{}',''),(0,'{}','HTTP Error 403'),(0,'{}',warning+'API lookup failed'),(0,'bad','')):
+            with self.assertRaises(PolicyError):parse_inventory_output(code,text,error)
+
     def test_role_union_and_disabled(self):
         self.hosts['two']['infrabox_roles']['chrony']={'enabled':False}
         self.assertEqual(impact(['roles/chrony/tasks/main.yml'],self.hosts)['hosts'],['one'])
