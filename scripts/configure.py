@@ -9,7 +9,7 @@ import subprocess
 import sys
 import tempfile
 from datetime import datetime, timezone
-import yaml
+from ansible._internal._json._profiles import _inventory_legacy
 from jsonschema import Draft202012Validator
 from discover import bao, pattern_argument
 from impact import PolicyError, changed_paths, impact
@@ -71,14 +71,15 @@ def validate_hosts(hosts, order, schema):
         reserved=[k for k in data if k.startswith('infrabox_') and k not in ('infrabox_roles','infrabox_netbox_id','infrabox_netbox_virtual')]
         if reserved: raise PolicyError('Reserved orchestration input on '+name)
 
-def snapshot_inventory(inventory):
-    """Convert native --list output to a private static snapshot preserving groups."""
-    hosts=inventory['_meta']['hostvars']
-    groups={name:{'hosts':{h:{} for h in data.get('hosts',[])},
-                  'children':{g:{} for g in data.get('children',[])},'vars':data.get('vars',{})}
-            for name,data in inventory.items() if name!='_meta'}
-    groups.setdefault('all',{})['hosts']=hosts
-    return groups
+def write_inventory_snapshot(stdout, directory):
+    """Replay native inventory JSON through Ansible's script plugin without losing trust tags."""
+    directory=Path(directory)
+    (directory/'inventory.json').write_text(stdout)
+    (directory/'inventory.json').chmod(0o600)
+    script=directory/'inventory.py'
+    script.write_text('#!/usr/bin/env python3\nfrom pathlib import Path\nimport sys\nsys.stdout.write(Path(__file__).with_suffix(".json").read_text())\n')
+    script.chmod(0o700)
+    return script
 
 def parse_inventory_output(code, stdout, stderr):
     # This native nb_inventory warning does not indicate incomplete API results.
@@ -87,7 +88,7 @@ def parse_inventory_output(code, stdout, stderr):
     if code or diagnostics:
         raise PolicyError('NetBox inventory loading failed or returned unexpected diagnostics')
     try:
-        value=json.loads(stdout)
+        value=json.loads(stdout,cls=_inventory_legacy.Decoder)
     except ValueError:
         raise PolicyError('NetBox inventory stdout is not JSON') from None
     if not isinstance(value,dict): raise PolicyError('Invalid NetBox inventory structure')
@@ -145,8 +146,7 @@ def run():
                 roles=data.get('infrabox_roles',{})
                 if not isinstance(roles,dict) or any(not isinstance(v,dict) or type(v.get('enabled')) is not bool for v in roles.values()):
                     raise PolicyError('Invalid role assignments on '+name)
-            snapshot=Path(temp)/'inventory.yml'
-            snapshot.write_text(yaml.safe_dump(snapshot_inventory(inventory)))
+            snapshot=write_inventory_snapshot(stdout,temp)
             if selected['limit'] is None:
                 scope=impact(changed_paths(source,selected['base'],selected['head']),hosts)
                 report.update(base=selected['base'],impact=scope)
@@ -157,6 +157,8 @@ def run():
                 # Use native inventory pattern resolution, no SSH or execution.
                 from ansible.parsing.dataloader import DataLoader
                 from ansible.inventory.manager import InventoryManager
+                from ansible.plugins.loader import init_plugin_loader
+                init_plugin_loader()
                 pattern_argument(selected['limit'])
                 manager=InventoryManager(loader=DataLoader(),sources=[str(snapshot)])
                 names=sorted(h.name for h in manager.get_hosts(selected['limit']))

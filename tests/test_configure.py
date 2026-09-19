@@ -10,7 +10,7 @@ import yaml
 from jsonschema import Draft202012Validator
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'scripts'))
-from configure import boolean, policy, registry, validate_hosts, snapshot_inventory, parse_inventory_output
+from configure import boolean, policy, registry, validate_hosts, write_inventory_snapshot, parse_inventory_output
 from impact import PolicyError, impact, changed_paths
 from runtime_contract import fingerprint
 
@@ -61,12 +61,33 @@ class ConfigurationTests(unittest.TestCase):
             self.assertTrue(all(k.startswith(role+'_') for k in defaults))
             self.assertTrue(set(defaults)<=set(self.schema['properties']))
         validate_hosts(self.hosts,order,self.schema)
+    def test_inventory_marked_strings_keep_types_and_remain_untrusted(self):
+        from ansible._internal._json._profiles import _inventory_legacy
+        from ansible._internal._datatag import _tags
+        from ansible.parsing.dataloader import DataLoader
+        from ansible.inventory.manager import InventoryManager
+        from ansible.plugins.loader import init_plugin_loader
+        init_plugin_loader()
+        data={'_meta':{'hostvars':{'one':{**self.hosts['one'], 'packages_names':['curl'], 'external_literal':'{{ 7 * 7 }}'}}},'all':{'hosts':['one']}}
+        encoded=json.dumps(data,cls=_inventory_legacy.Encoder)
+        self.assertIn('__ansible_unsafe',encoded)
+        decoded=parse_inventory_output(0,encoded,'')
+        validate_hosts(decoded['_meta']['hostvars'],registry(ROOT),self.schema)
+        self.assertEqual(decoded['_meta']['hostvars']['one']['packages_names'],['curl'])
+        with tempfile.TemporaryDirectory() as temp:
+            snapshot=write_inventory_snapshot(encoded,temp)
+            inventory=InventoryManager(loader=DataLoader(),sources=[str(snapshot)])
+            literal=inventory.get_host('one').vars['external_literal']
+            self.assertEqual(literal,'{{ 7 * 7 }}')
+            self.assertFalse(_tags.TrustedAsTemplate.is_tagged_on(literal))
+
     def test_native_snapshot_preserves_hosts_groups_and_vars(self):
         from ansible.parsing.dataloader import DataLoader
         from ansible.inventory.manager import InventoryManager
         data={'_meta':{'hostvars':self.hosts},'all':{'children':['site_lab']},'site_lab':{'hosts':['one','two'],'vars':{'site_var':True}}}
         with tempfile.TemporaryDirectory() as temp:
-            p=Path(temp)/'inventory.yml';p.write_text(yaml.safe_dump(snapshot_inventory(data)))
+            from ansible._internal._json._profiles import _inventory_legacy
+            p=write_inventory_snapshot(json.dumps(data,cls=_inventory_legacy.Encoder),temp)
             inventory=InventoryManager(loader=DataLoader(),sources=[str(p)])
             self.assertEqual([h.name for h in inventory.get_hosts('site_lab:!two')],['one'])
             self.assertEqual(inventory.get_host('one').vars['chrony_servers'],['ntp.example.com'])
